@@ -1,0 +1,19 @@
+for each user_query:
+    parsed = parse_query(user_query)
+    availability = call_availability_api()    # fixed JSON per run
+    llm_answer = generate_llm_answer(user_query, availability)
+
+    claim = parse_llm_answer(llm_answer)
+    verdict = verify_claim(availability, claim)  # {"is_valid": bool, "reason": str}
+
+    if verdict["is_valid"] is False:
+        log hallucination with explanation artifacts:
+            lime_result = run_lime(user_query, llm_answer)
+            attention   = inspect_attention(user_query)
+    else:
+        log correct
+
+# After runs:
+# - compute category rates, SE, bootstrap CI
+# - planned pairwise two-proportion z-tests
+# - refeed subset and evaluate with McNemar test on paired outcomes
