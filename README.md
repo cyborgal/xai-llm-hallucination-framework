@@ -9,13 +9,18 @@ This repository supports a **hypothesis-driven** study of how **query complexity
 ---
 
 ## Repository Structure
-
-- `src/prompt_parsing.py` — Parses user queries and classifies complexity (`simple` / `complex` / `edge`); extracts days, exact times, time ranges, and ambiguous phrases.
-- `src/verification_algorithm.py` — Converts availability JSON into **Prolog facts**, loads static rules, and verifies an LLM claim via SWI-Prolog; returns a JSON verdict with reason.
-- `src/xai_agent_loop_pseudocode.txt` — High-level control flow showing how responses are generated, validated with logic, and logged for interpretability analysis.
-- `src/dynamic_prolog_prompt.txt` — Instructions for emitting **facts** only and loading **static** rules (no new rules inlined).
-- `prolog/validation_rules.pl` — Static Prolog rules for exact-time validation and ambiguous windows (e.g., morning/afternoon/evening).
-- `prolog/optimized_prolog.pl`, `prolog/full_prolog.pl` — Minimal modules that load the same static rules (entry points).
-- `requirements.txt` — Python dependencies for analysis utilities used around the validator.
-
-> **Note:** This repository focuses on the **logic-validation and parsing** components described in the manuscript. It intentionally does **not** document figure generation here.
+.
+├── examples/
+│   ├── availability_sample.json      # Sample availability data (Thu 09–12, Fri 13–16)
+│   └── claims_sample.jsonl           # Example user queries with expected validity labels
+├── prolog/
+│   ├── example_facts_and_query.pl    # Tiny demo: asserts a few facts + query predicate
+│   └── validation_rules.pl           # Static rules: exact-time & ambiguous-window logic
+├── src/
+│   ├── dynamic_prolog_prompt.txt     # If you ever emit facts from an LLM, use this prompt
+│   ├── prompt_parsing.py             # Token/phrase extraction & complexity classification
+│   ├── verification_algorithm.py     # Python→Prolog adapter + single-claim verification
+│   └── xai_agent_loop_pseudocode.txt # High-level flow (generate→verify→log/explain)
+├── tests/
+│   └── test_validation.py            # Integration-ish tests against the sample data
+└── README.md
