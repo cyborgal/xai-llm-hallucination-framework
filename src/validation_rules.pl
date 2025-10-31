@@ -1,7 +1,5 @@
 % validation_rules.pl
-% Static rules used by primary analyses in the manuscript.
-% Handles exact times and ambiguous windows (morning/afternoon/evening).
-% No "closest match" or auto-correction rules are included.
+% Static rules for validating exact times and ambiguous windows.
 
 :- module(validation_rules, [
     time_to_minutes/2,
@@ -34,13 +32,12 @@ map_day(Str, DayAtom) :-
     atom_string(DayAtom, LD),
     L = LD.
 
-% Ambiguous time-of-day windows (minutes from midnight).
-% Adjust only if manuscript definitions change.
+% Ambiguous time windows (minutes from midnight).
 ambiguous_window(morning,    540,  720).  % 09:00–12:00
 ambiguous_window(afternoon,  720, 1020).  % 12:00–17:00
 ambiguous_window(evening,   1020, 1320).  % 17:00–22:00
 
-% Inclusive-overlap between [A1,A2] and [B1,B2].
+% Overlap check for [A1,A2] and [B1,B2] (inclusive).
 overlaps(A1, A2, B1, B2) :-
     A1 =< A2, B1 =< B2,
     max(A1, B1, S), min(A2, B2, E), S =< E.
@@ -50,9 +47,8 @@ max(_,B,B).
 min(A,B,A) :- A=<B, !.
 min(_,B,B).
 
-% ---------- Facts expected ----------
+% ---------- Expected Facts ----------
 % available_slot(Date, DayAtom, "HH:MM", StartMin, EndMin).
-% (Facts come from Python or dynamic prompt; not defined here.)
 
 % True if exact time lies within any available slot on Day.
 within_slot(Day, TimeMin, Label) :-
@@ -63,17 +59,18 @@ is_time_available(Day, TimeStr) :-
     map_day(Day, D), time_to_minutes(TimeStr, M),
     within_slot(D, M, _).
 
-% True if the ambiguous window overlaps any available slot on Day.
+% True if ambiguous window overlaps any available slot on Day.
 is_window_available(Day, WindowAtom, OverlapLabel) :-
     map_day(Day, D),
     ambiguous_window(WindowAtom, W1, W2),
     available_slot(_Date, D, OverlapLabel, S1, S2),
     overlaps(W1, W2, S1, S2).
 
-% ---------- Primary validation entry point ----------
+% ---------- Validation ----------
 % validate_answer(+Day, +Request, -Verdict, -Reason)
 % Request := exact_time("HH:MM") ; ambiguous(window_atom)
 % Verdict := ok ; error
+
 validate_answer(Day, exact_time(TimeStr), ok, "exact time is available") :-
     is_time_available(Day, TimeStr), !.
 validate_answer(Day, exact_time(TimeStr), error, Reason) :-
@@ -86,7 +83,7 @@ validate_answer(Day, ambiguous(Window), ok, R) :-
 validate_answer(Day, ambiguous(Window), error, R) :-
     format(atom(R), "ambiguous window (~w) has no overlap on ~w", [Window, Day]).
 
-% ---------- Minimal JSON printing ----------
+% ---------- JSON output ----------
 json_bool(true,  "true").
 json_bool(false, "false").
 
