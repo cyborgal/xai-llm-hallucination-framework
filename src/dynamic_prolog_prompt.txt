@@ -8,34 +8,33 @@ Emit ONLY:
   (b) a single directive to load static rules, and
   (c) a single validation QUERY.
 
-IMPORTANT CONSTRAINTS
-- DO NOT invent new rules or “closest match” logic.
-- DO NOT mutate or filter the tool’s JSON.
+CONSTRAINTS
+- Do not invent new rules.
+- Do not alter the JSON semantics.
 - Use the static rules from: prolog/validation_rules.pl
 
 FACT FORMAT
 available_slot(Date, DayAtom, "HH:MM", StartMin, EndMin).
-  - Date: "YYYY-MM-DD"
+  - Date: "YYYY-MM-DD" or "-" if not used
   - DayAtom: lowercase weekday atom (monday..sunday)
   - "HH:MM": representative label for the slot
-  - StartMin/EndMin: minutes from midnight for the entire open interval
+  - StartMin/EndMin: minutes from midnight for the available interval
 
-AFTER THE FACTS, emit exactly one include directive:
+INCLUDE STATIC RULES
 :- ensure_loaded('prolog/validation_rules.pl').
 
 QUERY
-Based on the user query text, form a validation query that checks if a claimed slot
-(or ambiguous window like “morning”) is truly available using the static predicates,
-and print a single line of JSON to STDOUT:
+Based on the user query text, call `validate_answer/4` and print exactly one JSON line:
 {"is_valid": true|false, "reason": "text"}
 
-EXAMPLES
-% (facts)
-available_slot('2025-07-31', thursday, "09:00", 540, 720).
-available_slot('2025-08-01', friday,   "13:00", 780, 960).
+EXAMPLE
+
+% facts
+available_slot('-', thursday, "09:00", 540, 720).
+available_slot('-', friday,   "13:00", 780, 960).
 
 :- ensure_loaded('prolog/validation_rules.pl').
 
-% (query) e.g., user asked "Is Friday at 13:30 available?"
+% query e.g., "Is Friday at 13:30 available?"
 :- validate_answer(friday, exact_time("13:30"), Verdict, Reason),
    json_out(Verdict, Reason).
