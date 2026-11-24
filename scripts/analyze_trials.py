@@ -88,7 +88,7 @@ def paired_stats(path: str) -> dict[str, float | int]:
     worsened = sum(not a and b for a, b in zip(before, after))
     discordant = improved + worsened
     if discordant:
-        statistic = (abs(improved - worsened) - 1) ** 2 / discordant
+        statistic = max(0, abs(improved - worsened) - 1) ** 2 / discordant
         p = math.erfc(math.sqrt(statistic / 2))
     else:
         statistic, p = 0.0, 1.0
