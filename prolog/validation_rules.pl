@@ -1,95 +1,46 @@
-% validation_rules.pl
-% Static rules for validating exact times and ambiguous windows.
+% Public deterministic validator accompanying JEI article 25-313.
+:- module(validation_rules, [validate_answer/4, json_out/2]).
+:- use_module(library(http/json)).
+:- dynamic available_slot/5.
 
-:- module(validation_rules, [
-    time_to_minutes/2,
-    map_day/2,
-    ambiguous_window/3,
-    overlaps/4,
-    within_slot/3,
-    is_time_available/2,
-    is_window_available/3,
-    validate_answer/4,
-    json_out/2
-]).
+% Valid 24-hour strings, represented as "HH:MM".
+time_to_minutes(Time, Minutes) :-
+    (string(Time) -> atom_string(Atom, Time) ; Atom = Time),
+    atom(Atom),
+    atomic_list_concat([HAtom, MAtom], ':', Atom),
+    atom_number(HAtom, H), atom_number(MAtom, M),
+    between(0, 23, H), between(0, 59, M),
+    Minutes is H * 60 + M.
 
-% ---------- Utilities ----------
+map_day(Day, Normal) :-
+    (string(Day) -> string_lower(Day, Lower), atom_string(Normal, Lower)
+    ; atom(Day) -> downcase_atom(Day, Normal)),
+    memberchk(Normal, [monday,tuesday,wednesday,thursday,friday,saturday,sunday]).
 
-time_to_minutes(TimeStr, Minutes) :-
-    atom(TimeStr),
-    atom_codes(TimeStr, Codes),
-    append(HCodes, [0':|MCodes], Codes),
-    atom_codes(HH, HCodes),
-    atom_codes(MM, MCodes),
-    atom_number(HH, H),
-    atom_number(MM, M),
-    Minutes is H*60 + M.
+ambiguous_window(morning, 540, 720).
+ambiguous_window(afternoon, 720, 1020).
+ambiguous_window(evening, 1020, 1320).
 
-map_day(Str, DayAtom) :-
-    ( atom(Str) -> S=Str ; atom_string(S, Str) ),
-    downcase_atom(S, L),
-    member(DayAtom, [monday,tuesday,wednesday,thursday,friday,saturday,sunday]),
-    atom_string(DayAtom, LD),
-    L = LD.
+% Half-open availability windows: the end boundary is not a start time.
+is_time_available(Day, Time) :-
+    map_day(Day, Normal),
+    time_to_minutes(Time, Minute),
+    available_slot(_, Normal, _, Start, End),
+    Start =< Minute, Minute < End, !.
 
-% Ambiguous time windows (minutes from midnight).
-ambiguous_window(morning,    540,  720).  % 09:00–12:00
-ambiguous_window(afternoon,  720, 1020).  % 12:00–17:00
-ambiguous_window(evening,   1020, 1320).  % 17:00–22:00
+is_window_available(Day, Window) :-
+    map_day(Day, Normal), ambiguous_window(Window, WStart, WEnd),
+    available_slot(_, Normal, _, SStart, SEnd),
+    max(WStart, SStart) < min(WEnd, SEnd), !.
 
-% Overlap check for [A1,A2] and [B1,B2] (inclusive).
-overlaps(A1, A2, B1, B2) :-
-    A1 =< A2, B1 =< B2,
-    max(A1, B1, S), min(A2, B2, E), S =< E.
+validate_answer(Day, exact_time(Time), ok, "exact time is available") :-
+    is_time_available(Day, Time), !.
+validate_answer(Day, exact_time(_), error, "exact time is not available") :- !.
+validate_answer(Day, ambiguous(Window), ok, "requested window overlaps availability") :-
+    is_window_available(Day, Window), !.
+validate_answer(_, ambiguous(_), error, "requested window has no available overlap").
 
-max(A,B,A) :- A>=B, !.
-max(_,B,B).
-min(A,B,A) :- A=<B, !.
-min(_,B,B).
-
-% ---------- Expected Facts ----------
-% available_slot(Date, DayAtom, "HH:MM", StartMin, EndMin).
-
-% True if exact time lies within any available slot on Day.
-within_slot(Day, TimeMin, Label) :-
-    available_slot(_Date, Day, Label, StartMin, EndMin),
-    StartMin =< TimeMin, TimeMin =< EndMin.
-
-is_time_available(Day, TimeStr) :-
-    map_day(Day, D), time_to_minutes(TimeStr, M),
-    within_slot(D, M, _).
-
-% True if ambiguous window overlaps any available slot on Day.
-is_window_available(Day, WindowAtom, OverlapLabel) :-
-    map_day(Day, D),
-    ambiguous_window(WindowAtom, W1, W2),
-    available_slot(_Date, D, OverlapLabel, S1, S2),
-    overlaps(W1, W2, S1, S2).
-
-% ---------- Validation ----------
-% validate_answer(+Day, +Request, -Verdict, -Reason)
-% Request := exact_time("HH:MM") ; ambiguous(window_atom)
-% Verdict := ok ; error
-
-validate_answer(Day, exact_time(TimeStr), ok, "exact time is available") :-
-    is_time_available(Day, TimeStr), !.
-validate_answer(Day, exact_time(TimeStr), error, Reason) :-
-    \+ is_time_available(Day, TimeStr),
-    format(atom(Reason), "exact time ~w on ~w is not within any available interval", [TimeStr, Day]).
-
-validate_answer(Day, ambiguous(Window), ok, R) :-
-    is_window_available(Day, Window, Label),
-    format(atom(R), "ambiguous window (~w) overlaps slot labeled ~w", [Window, Label]), !.
-validate_answer(Day, ambiguous(Window), error, R) :-
-    format(atom(R), "ambiguous window (~w) has no overlap on ~w", [Window, Day]).
-
-% ---------- JSON output ----------
-json_bool(true,  "true").
-json_bool(false, "false").
-
-json_out(ok, Reason) :-
-    json_bool(true, TB),
-    format('{"is_valid": ~w, "reason": "~w"}~n', [TB, Reason]).
-json_out(error, Reason) :-
-    json_bool(false, FB),
-    format('{"is_valid": ~w, "reason": "~w"}~n', [FB, Reason]).
+json_out(Verdict, Reason) :-
+    (Verdict == ok -> Valid = true ; Valid = false),
+    json_write_dict(current_output, _{is_valid:Valid, reason:Reason}),
+    nl.
