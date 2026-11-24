@@ -1,24 +1,47 @@
-# Query Complexity & Tool-Use Hallucinations in LLM Scheduling — Code
+# Explainable AI Framework for LLM Scheduling Hallucinations
 
-This repository supports a **hypothesis-driven** study of how **query complexity** affects **tool-use hallucinations** in large language models (LLMs) during appointment scheduling, and how an XAI pipeline (logic validation + interpretability) detects and explains errors.
+**Public code supporting the published research paper:**  
+Baelyn Thantron and Gopal Gupta, [*An explainable AI framework for studying query complexity and hallucinations in LLM scheduling tasks*](https://emerginginvestigators.org/articles/25-313/pdf), *Journal of Emerging Investigators* (2026). DOI: [10.59720/25-313](https://doi.org/10.59720/25-313).
 
-> **Hypothesis (study context)**  
-> Increasing query complexity (multi-day or ambiguous time ranges) **increases** tool-use hallucinations due to misinterpretation of structured availability data.  
-> The code here provides supporting logic-validation rules and parsing utilities for the study.
+The study investigates whether more complex appointment-scheduling queries produce more tool-use hallucinations and explores logic-based validation and explainability for diagnosing those errors.
 
----
+**November 2026 update:** The research publication was finalized in November 2026. The public repository was updated in November to align the released validation utilities, test cases, and documentation with the final manuscript.
 
-## What’s here
+## Published findings
 
-- `src/prompt_parsing.py` — Classifies queries (simple/complex/edge) and extracts constraints (days, exact times, ranges, and ambiguous terms like “morning”).
-- `src/verification_algorithm.py` — Converts availability JSON to Prolog **facts**, loads static **validation rules**, and verifies an LLM’s claim via SWI-Prolog; returns a JSON-friendly verdict.
-- `src/xai_agent_loop_pseudocode.txt` — High-level loop used in the manuscript (generation → tool → validation → XAI → optional refeed).
-- `src/dynamic_prolog_prompt.txt` — If you need to emit Prolog from an LLM, instructs it to output **facts only** and then include the static rules (no auto “closest-match” logic).
+The article reports testing 9,999 scheduling queries: hallucination rates of **10.2% (simple)**, **14.8% (complex)**, and **18.5% (edge)**. In a 500-query paired feedback experiment, reported hallucinations fell from **16.8% to 4.6%** after Prolog corrective feedback. These are results **reported in the publication**, not reconstructed from public sample data.
 
-- `prolog/validation_rules.pl` — Static Prolog rules supporting availability validation. Handles exact times and ambiguous windows (e.g., morning = 09:00–12:00).
-- `prolog/example_facts_and_query.pl` — Minimal file that loads the Prolog validation rules.
+## Public implementation
 
-- `examples/availability_sample.json` — Sample availability (Thu 09:00–12:00; Fri 13:00–16:00) used in tests.
-- `examples/claims_sample.jsonl` — Example queries with expected validity labels for integration testing.
+| Component | File |
+| --- | --- |
+| Classify scheduling query complexity | `src/prompt_parsing.py` |
+| Transform structured calendar availability into Prolog facts | `src/verification_algorithm.py` |
+| Logic-based time and window validation | `prolog/validation_rules.pl` |
+| Representative availability example | `examples/availability_sample.json` |
+| Regression and integration tests | `tests/test_validation.py` |
+| Runnable public validator demonstration | `scripts/demo_validator.py` |
+| Reanalyze **real supplied** trial and paired-feedback logs | `scripts/analyze_trials.py` |
+| Original study workflow schematic | `src/xai_agent_loop_pseudocode.txt` |
 
-- `tests/test_validation.py` — Integration test that loads the samples, calls the verifier, and asserts agreement with expected labels (auto-skips if `swipl` is missing).
+## Run the included validator
+
+Requirements: **Python 3.11+**, **SWI-Prolog 9.x** (`swipl` on PATH), and pytest.
+
+```bash
+python -m pip install pytest
+python -m pytest -q
+python -m scripts.demo_validator
+```
+
+The demo validates a Thursday morning slot and Friday afternoon slot against representative calendar data. CI runs the same test suite with SWI-Prolog installed.
+
+For a detailed **paper-to-code methodology map**, original-data requirements, and instructions for analyzing real study logs, see **[REPRODUCIBILITY.md](REPRODUCIBILITY.md)**.
+
+### Scope
+
+The published research involves GPT-4o/LangChain runs, Prolog, LIME, attention visualizations, and a corrective-feedback experiment. The public code provides a tested **deterministic validation subset and reusable analysis utilities**, not the complete historical experiment corpus or LLM/XAI outputs. Reproducing the paper's exact numerical findings requires original experiment records and explanation artifacts. No missing results have been synthesized for this release.
+
+## Citation
+
+Thantron, B., & Gupta, G. (2026). *An explainable AI framework for studying query complexity and hallucinations in LLM scheduling tasks*. Journal of Emerging Investigators. https://doi.org/10.59720/25-313
