@@ -10,9 +10,7 @@ from typing import Optional
 
 DAY_PATTERN = r"\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b"
 AMBIG_PATTERN = r"\b(?:morning|afternoon|evening)\b"
-TIME_PATTERN = r"(?<!\w)(?:0?[1-9]|1[0-2])(?::[0-5]\d)?\s*[ap]\.?
-\s*m\.?\b|(?<!\w)(?:[01]?\d|2[0-3]):[0-5]\d(?!\w)"
-TIME_PATTERN = TIME_PATTERN.replace("\n", "")
+TIME_PATTERN = r"(?<!\\w)(?:0?[1-9]|1[0-2])(?::[0-5]\\d)?\\s*[ap]\\.?m\\.?\\b|(?<!\\w)(?:[01]?\\d|2[0-3]):[0-5]\\d(?!\\w)"
 RANGE_PATTERN = r"\b(?:between|from)\s+(.+?)\s+(?:and|to|-)\s+(.+?)(?=$|[,?.])"
 
 
