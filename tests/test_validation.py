@@ -1,96 +1,64 @@
-import io
+"""Public-validator regression tests. Run: python -m pytest -q"""
 import json
-import os
 import pathlib
 import shutil
-import importlib
-import sys
-
 import pytest
 
+from src.prompt_parsing import parse_llm_answer, parse_query
+from src.verification_algorithm import facts_from_availability, normalize_availability, verify_claim
+
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-EXAMPLES_DIR = ROOT / "examples"
-
-AVAIL_FILE = EXAMPLES_DIR / "availability_sample.json"
-CLAIMS_FILE = EXAMPLES_DIR / "claims_sample.jsonl"
-
-# Try to import the project's verification module from either src/ or root.
-_verif_mod = None
-for mod_name in ("src.verification_algorithm", "verification_algorithm"):
-    try:
-        _verif_mod = importlib.import_module(mod_name)
-        break
-    except ModuleNotFoundError:
-        continue
-
-if _verif_mod is None:
-    pytest.skip("verification_algorithm module not found in src/ or project root", allow_module_level=True)
-
-# Find a callable that validates a single natural-language claim.
-VERIFY_FN = None
-for candidate in (
-    "verify_availability_claim",  # preferred name in our docs
-    "verify_claim",               # common alias
-    "verify_tool_output"          # older name (expects structured args)
-):
-    if hasattr(_verif_mod, candidate):
-        VERIFY_FN = getattr(_verif_mod, candidate)
-        break
-
-if VERIFY_FN is None:
-    pytest.skip(
-        "No verification function found in verification_algorithm "
-        "(expected verify_availability_claim / verify_claim / verify_tool_output)",
-        allow_module_level=True
-    )
-
-# Optional: if your pipeline shells out to SWI-Prolog, skip if swipl is missing.
-if shutil.which("swipl") is None:
-    pytest.skip("SWI-Prolog (swipl) not found in PATH; skipping integration tests", allow_module_level=True)
+SAMPLE = json.loads((ROOT / "examples/availability_sample.json").read_text())
 
 
-def _load_availability():
-    with open(AVAIL_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
+def test_sample_schema_is_normalized():
+    assert normalize_availability(SAMPLE) == {
+        "thursday": ["09:00-12:00"], "friday": ["13:00-16:00"]
+    }
 
 
-def _iter_claims():
-    with open(CLAIMS_FILE, "r", encoding="utf-8") as f:
-        for line in f:
-            if line.strip():
-                yield json.loads(line)
+def test_facts_prolog_module_qualified():
+    text = facts_from_availability(SAMPLE)
+    assert 'validation_rules:available_slot("-", thursday, "09:00", 540, 720).' in text
+    assert 'validation_rules:available_slot("-", friday, "13:00", 780, 960).' in text
 
 
-@pytest.mark.parametrize("claim", list(_iter_claims()))
-def test_claims_against_sample_availability(claim):
-    """
-    Integration-ish test: uses your verification function to evaluate each claim line
-    against the sample availability. The test expects the function to return a dict
-    containing a boolean field indicating validity. We support several common field
-    names to keep this test tolerant to small API differences.
-    """
-    availability = _load_availability()
+@pytest.mark.parametrize("query,kind", [
+    ("Is Thursday at 10:15 AM available?", "simple"),
+    ("Can we meet Thursday or Friday at 10:00 AM?", "complex"),
+    ("Can we meet Thursday morning?", "edge"),
+    ("Can we meet Thursday between 10:00 AM and 11:00 AM?", "complex"),
+])
+def test_query_classification(query, kind):
+    assert parse_query(query).complexity == kind
 
-    # Accept a few result shapes (be lenient to repo variations).
-    res = None
-    if VERIFY_FN.__name__ == "verify_tool_output":
-        # Older signature often expects (tool_result_json, llm_expected_str)
-        res = VERIFY_FN(availability, claim["query"])
-    else:
-        res = VERIFY_FN(availability, claim["query"])
 
-    # Normalize result -> boolean
-    if isinstance(res, dict):
-        if "valid" in res:
-            got = bool(res["valid"])
-        elif "is_valid" in res:
-            got = bool(res["is_valid"])
-        elif "match" in res and isinstance(res["match"], dict) and "valid" in res["match"]:
-            got = bool(res["match"]["valid"])
-        else:
-            raise AssertionError(f"Unrecognized result shape from verifier: {res}")
-    else:
-        # If the function returns a bare bool, accept it.
-        got = bool(res)
+def test_parse_affirmative_slot():
+    assert parse_llm_answer("Yes, Friday at 1:30 PM is available") == {
+        "day": "friday", "time": "13:30", "ambiguous": None
+    }
 
-    assert got == claim["expected_valid"], f"Claim #{claim['id']} failed: {claim['query']!r}"
+
+def test_reject_negative_claim():
+    with pytest.raises(ValueError, match="Negative"):
+        parse_llm_answer("No, Friday at 9:30 AM is unavailable")
+
+
+def test_bad_availability_rejected():
+    with pytest.raises(ValueError):
+        facts_from_availability({"Thursday": ["25:00-27:00"]})
+
+
+@pytest.mark.skipif(shutil.which("swipl") is None, reason="SWI-Prolog not installed")
+@pytest.mark.parametrize("claim,expected", [
+    ({"day": "friday", "time": "13:30"}, True),
+    ({"day": "friday", "time": "09:30"}, False),
+    ({"day": "thursday", "time": "11:00"}, True),
+    ({"day": "thursday", "time": "12:00"}, False),
+    ({"day": "thursday", "ambiguous": "morning"}, True),
+    ({"day": "friday", "ambiguous": "morning"}, False),
+])
+def test_prolog_integration(claim, expected):
+    outcome = verify_claim(SAMPLE, claim)
+    assert outcome["is_valid"] is expected
+    assert isinstance(outcome["reason"], str)
